@@ -1,25 +1,295 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
+title: 'Peer Assessment 1: Activity Monitoring'
+author: "James Theobald"
+date: "January 4, 2016"
 output: 
-  html_document:
-    keep_md: true
+  html_document: 
+    fig_caption: yes
+    keep_md: yes
 ---
 
+Introduction
+============
 
-## Loading and preprocessing the data
-
-
-
-## What is mean total number of steps taken per day?
+Activity monitoring as the current trend in fitness trackers offers the perfect opportunity to practice exploratory analytic techniques in literate statistical programming. The file `activity.csv` provides information about `steps` taken over a period of time for which this report strives to elucidate activity patterns.  This report is submitted for partial fullfillment of the requirements of for Reproducible Research by Johns Hipkins University on Coursera.
 
 
+Loading and Preprocessing the Data
+===================================
+The packages `dplyr` and `lattice` are required for this analysis
 
-## What is the average daily activity pattern?
+1. Download the data at <https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip>.
+
+```{r download_data}
+temp <- tempfile()
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip",temp)
+unzip(temp)
+unlink(temp)
+rm(temp)
+
+```
+
+
+2. Load the data into R with `read.csv()`.  A comparison will be made between data including NA's and data imputing NA's, so two versions of the data are read into R. It is not necessary to create and save both versions of the data frame at once.  The `activity` data frame may be modified after all the initial analyses are done without imputation.
+
+```{r read_data}
+activity <- read.csv("activity.csv")
+
+activity.imp <- read.csv("activity.csv")
+```
+
+3. Determine the structure and characteristics of the data.
+
+```{r see_structure}
+names(activity)
+#dim(activity)
+str(activity)
+summary(activity)
+#class(activity)
+head(activity)
+tail(activity)
+```
+
+##Variables##
+
+<https://class.coursera.org/repdata-032/human_grading/view/courses/975145/assessments/3/submissions>  
+
+###Original Variables###
+ * steps -- the number of steps taken in a 5-minute interval (missing values are coded as `NA`)  
+ * date -- the date on which the measurement was taken in YYYY-MM-DD format  
+ * interval -- cumulative sum of 5-minute segments during which data was recorded  
+
+###Transformed Variables###
+ * day -- the weekday name based on the `date` variable
+ * group -- a factor variable for `weekend` or `weekday` classification of `day`
+
+##Transform Data##
+
+First, all of the `NA` missing values are replaced with `0` so that each interval has a numeric value.  The following code says to find where in the data frame a value `NA` exists, then subset `activity` where `is.na()` is `TRUE`, i.e. `NA` exists, then replace with `0` that subset satisfying the condition (`is.na() == TRUE`).
+```{r impute_data}
+activity.imp[is.na(activity)] <- 0
+```
+
+In reference to recording activity, it is reasonable to assume that an `NA` is equivalent to steps of `0` recorded especially if it does not appear to interrupt a chunk of high activity.
+
+Second, the variables `day` and `group` must be added to indicate each weekday and weekend status.
+
+```{r mutate_day}
+library(dplyr)
+activity <- activity %>% mutate(day = weekdays(as.Date(date)), group = "")
+activity[activity$day %in% c("Saturday", "Sunday"), 5] <- "weekend"
+activity[!activity$day %in% c("Saturday", "Sunday"), 5] <- "weekday"
+group <- as.factor(activity$group)
+activity$group <- group
+names(activity)
+head(activity)
+
+str(activity)
+```
+
+
+Exploratory Questions
+=====================
+
+###1. What is the mean total number of steps taken per day?###
+
+It is important to understand that each day is divided into 288 5-minute intervals, therefore the total number of steps taken during one day of 288 intervals is the cumulative sum of steps across all intervals for a single day. The mean number of steps taken for each day then takes into account all steps taken during every interval divided by the number of days which is equal to 61 in this case .  Note that the `activity` data frame has 17568, or 288 * 61, rows. Note that `daily.mean.steps` has 8 NA's corresponding to 8 (out of 61) days that have no data recorded.
+
+```{r hist_sumstep_meanstep}
+
+# Calculate daily sum of steps (total daily steps) and mean total daily steps
+
+daily.sum.steps <- activity %>% tbl_df() %>% group_by(date) %>% summarise_each(funs(sum(., na.rm = TRUE)), steps)
+
+# Note: mean is taken for each interval not for the total daily sum
+daily.mean.steps <- activity %>% tbl_df() %>% group_by(date) %>% summarise_each(funs(mean(., na.rm = TRUE)), steps)
+
+# Summarize each 'daily.sum.steps' and 'daily.mean.steps'
+
+summary(daily.sum.steps)
+summary(daily.mean.steps)
+
+# Plot histograms of both the total daily and mean total daily steps
+
+par(mfrow = c(1,2))
+hist(daily.sum.steps$steps, main = "Total Daily Steps", xlab = "Total Steps")
+abline(v =c(mean(daily.sum.steps$steps, na.rm = TRUE), median(daily.sum.steps$steps, na.rm = TRUE)), col = c("red", "blue"))
+
+hist(daily.mean.steps$steps, main = "Mean Daily Steps", xlab = "Mean Steps")
+
+# Calculate and report mean and median total daily steps
+
+mean.total.daily.steps <- mean(daily.sum.steps$steps, na.rm = TRUE)
+median.total.daily.steps <- median(daily.sum.steps$steps, na.rm = TRUE)
+rbind("Mean Total Daily Steps" = mean.total.daily.steps, "Median Total Daily Steps" = median.total.daily.steps)
+```
+
+
+###2. What is the average daily activity pattern?###
+
+The average daily activity pattern must be analyzed across the entire day.  For each day, as the day progresses over each 5-minute interval a specific pattern of steps evolves.  People are habitual and are more active during some intervals and less active during other intervals.  Calculate the average over the 61 days of data collection so that the plot shows the average of the first 5-minute interval over all the days, then the average of the second 5-minute interval over all the days, then the third, and so on until the final day.
+
+```{r activity_pattern_plot}
+# Activity grouped by interval which steps averaged over each interval across all days
+by_int.a <- activity %>% group_by(interval) %>% summarise(mean(steps, na.rm = TRUE))
+par(mfrow = c(1,1))
+plot(by_int.a, typ = "l", main = "Average Daily Activity Pattern", xlab = "Time Interval (minutes)", ylab = "Average Number of Steps")
+points(835, 206.1698, col = "red", pch = 16)
+text(835, 206.1698, labels = "835, 206", pos = 4)
+```
+
+Notice a peak over 150 steps somewhere between 500 and 1000 minutes.  Virtually nothing is recorded before 500 minutes, and smaller spikes between 1000 and 2000 where activity begins to wane.  To find the time interval corresponding to the maximum number of steps, find where the maximum occurs in the mean steps column as a vector, then subset the interval column as a vector where the maximum occurs.  The index for each should be the same.
+
+```{r int_max_steps}
+# To find the interval corresponding to the maximum average daily steps
+mdp.steps <- by_int.a$`mean(steps, na.rm = TRUE)`
+mdp.interval <- by_int.a$interval
+mdp.interval[which.max(mdp.steps)]
+```
+
+The maximum average daily steps occurs during the 835 minutes, 167th interval, or 13.92 hours into data collection.
+
+```{r show_activity_at_max}
+by_int.a[by_int.a$interval == 835, ]
+```
+
+###3. Are there differences in activity patterns between weekdays and weekends?###
+
+To determine differences in the daily activity pattern between weekdays and weekends the `activity` data frame must be transformed slightly differently to produce a panel plot.
+
+```{r weekend_weekday_plots}
+library(lattice)
+
+# New transformation of 'activity'
+a <- activity %>% select(interval, steps, group) %>% group_by(group, interval) %>% summarise(mean.steps = mean(steps, na.rm = T))
+
+# Lattice panel plot
+xyplot(mean.steps ~ interval | group, data = a, type = "l", ylab = "Average Number of Steps", main = "Daily Activity Pattern: weekend vs weekday")
+
+```
+
+
+##Effect of Imputation##
+
+The following is a repeat of the previous analysis with data where NA's are imputed.
+
+```{r imputation_effect}
+# Calculate mean and median steps for imputed and original data
+
+#mean(activity$steps, na.rm = T)
+#mean(activity.imp$steps)
+
+#median(activity$steps, na.rm = T)
+#median(activity.imp$steps)
+
+# Calculate daily sum of steps (total daily steps) and mean total daily steps with imputed data
+
+daily.sum.steps.imp <- activity.imp %>% tbl_df() %>% group_by(date) %>% summarise_each(funs(sum(., na.rm = TRUE)), steps)
+
+# Note: mean is taken for each interval not for the total daily sum
+daily.mean.steps.imp <- activity.imp %>% tbl_df() %>% group_by(date) %>% summarise_each(funs(mean(., na.rm = TRUE)), steps)
+
+# Summarize each 'daily.sum.steps' and 'daily.mean.steps'
+
+summary(daily.sum.steps.imp)
+summary(daily.mean.steps.imp)
 
 
 
-## Imputing missing values
+# Plot histograms of both the total daily and mean total daily steps
+
+par(mfrow = c(1,2))
+hist(daily.sum.steps.imp$steps, main = "Total Daily Steps", xlab = "Total Steps")
+abline(v =c(mean(daily.sum.steps.imp$steps, na.rm = TRUE), median(daily.sum.steps.imp$steps, na.rm = TRUE)), col = c("red", "blue"))
+hist(daily.mean.steps.imp$steps, main = "Mean Daily Steps", xlab = "Mean Steps")
+
+# Calculate and report mean and median total daily steps
+
+mean.total.daily.steps.imp <- mean(daily.sum.steps.imp$steps, na.rm = TRUE)
+median.total.daily.steps.imp <- median(daily.sum.steps.imp$steps, na.rm = TRUE)
+rbind("Mean Total Daily Steps" = mean.total.daily.steps.imp, "Median Total Daily Steps" = median.total.daily.steps.imp)
 
 
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+```{r summary_table}
+data.frame(cbind(imputed = c(mean(activity.imp$steps), median(activity.imp$steps)), original = c(mean(activity$steps, na.rm = T), median(activity$steps, na.rm = T))), row.names = c("mean", "median"))
+```
+
+Compare the following two histograms:
+
+```{r compare_histograms}
+par(mfrow = c(1,2))
+hist(daily.sum.steps$steps, main = "Total Daily Steps", xlab = "Total Steps")
+hist(daily.sum.steps.imp$steps, main = "Total Daily Steps", xlab = "Total Steps", sub = "Imputed")
+```
+
+What would be the difference if the mean value was used to impute NA's?
+
+```{r mean_imputation}
+# delete data to start over
+rm(list=ls())
+# re-read data
+activity <- read.csv("activity.csv")
+
+activity[is.na(activity)] <- 37.4
+
+library(dplyr)
+activity <- activity %>% mutate(day = weekdays(as.Date(date)), group = "")
+activity[activity$day %in% c("Saturday", "Sunday"), 5] <- "weekend"
+activity[!activity$day %in% c("Saturday", "Sunday"), 5] <- "weekday"
+group <- as.factor(activity$group)
+activity$group <- group
+
+# Daily Mean Steps
+# Note: mean is taken for each interval not for the total daily sum
+daily.mean.steps <- activity %>% tbl_df() %>% group_by(date) %>% summarise_each(funs(mean(., na.rm = TRUE)), steps)
+
+# Calculate daily sum of steps (total daily steps) and mean total daily steps
+
+daily.sum.steps <- activity %>% tbl_df() %>% group_by(date) %>% summarise_each(funs(sum(., na.rm = TRUE)), steps)
+
+#plot
+par(mfrow = c(1, 2))
+hist(daily.mean.steps$steps, main = "Mean Daily Steps", xlab = "Mean Steps")
+
+hist(daily.sum.steps$steps, main = "Total Daily Steps", xlab = "Total Steps")
+abline(v = c(mean(daily.sum.steps$steps, na.rm = TRUE), median(daily.sum.steps$steps, na.rm = TRUE)), col = c("red", "blue"), lwd = c(5.0, 1.5))
+
+# Average daily activity pattern
+# Activity grouped by interval which steps averaged over each interval across all days
+by_int.a <- activity %>% group_by(interval) %>% summarise(mean(steps, na.rm = TRUE))
+par(mfrow = c(1,1))
+plot(by_int.a, typ = "l", main = "Average Daily Activity Pattern", xlab = "Time Interval (minutes)", ylab = "Average Number of Steps")
+points(835, 184.0361, col = "red", pch = 16)
+text(835, 184.0361, labels = "835, 184", pos = 4)
+
+# weekend vs weekday
+library(lattice)
+
+# New transformation of 'activity'
+a <- activity %>% select(interval, steps, group) %>% group_by(group, interval) %>% summarise(mean.steps = mean(steps, na.rm = T))
+
+# Lattice panel plot
+xyplot(mean.steps ~ interval | group, data = a, type = "l", ylab = "Average Number of Steps", main = "Daily Activity Pattern: weekday vs weekend")
+
+
+```
+
+Summary
+=======
+
+Steps were recorded every five minutes for 24 hours over 61 days from October 1, 2012 through November 30, 2012.  Eight days of values were missing recorded as `NA`. October 1, 8, November 1, 4, 9, 10, 14, and 30 were the days missing data. The mean and median total daily steps did not change when imputing `NA`'s with `0`.  The mean and median were identical when the `NA`'s were imputed with the mean number of steps - i.e. the average value recorded for an interval across all days. The average daily pattern did not change with imputation but did give a slightly lower maximum when imputed with the mean. Weekday daily patterns differ substantially.  Weekdays tend to have a peak (maximum) between 500 - 1000 minutes.  Activity above 1000 minutes is lower. Weekends show a more sustained activity lacking a maximum present in the weekday average activity pattern.
+
+Resources
+=========
+
+Reproducible Research by Johns Hopkins University on Coursera, 2016.
+
+###Session Information###
+
+```{r session_info}
+sessionInfo()
+```
+
+&copy; 2016
